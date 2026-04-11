@@ -217,8 +217,8 @@
     ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
     /* ── WHATSAPP BTN ── */
-    .wa-btn{position:fixed;bottom:90px;left:16px;z-index:200;width:48px;height:48px;background:#25D366;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(37,211,102,0.4);text-decoration:none;font-size:24px;transition:transform .2s,box-shadow .2s}
-    .wa-btn:active{transform:scale(0.92);box-shadow:0 2px 8px rgba(37,211,102,0.3)}
+    .wa-btn{position:fixed;bottom:90px;left:16px;z-index:999;width:52px;height:52px;background:#25D366;border-radius:50%;display:none;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(37,211,102,0.5);text-decoration:none;font-size:26px;transition:transform .2s,box-shadow .2s}
+    .wa-btn:active{transform:scale(0.92)}
   </style>
 </head>
 <body>
@@ -302,14 +302,15 @@
           </div>
         </div>
         <div style="margin-bottom:11px">
-          <div class="dim-group-label">Formato (cm)</div>
-          <div class="grid3">
+          <div class="dim-group-label">Formato (cm) y Cantidad</div>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr auto 80px;gap:6px;align-items:start">
             <div class="field" style="margin-bottom:0"><label>Largo</label><input type="number" id="largo" placeholder="0" inputmode="decimal"></div>
             <div class="dim-separator">×</div>
             <div class="field" style="margin-bottom:0"><label>Ancho</label><input type="number" id="ancho" placeholder="0" inputmode="decimal"></div>
+            <div class="dim-separator" style="font-size:14px;color:var(--border2);padding-top:20px">|</div>
+            <div class="field" style="margin-bottom:0"><label>Cant.</label><input type="number" id="cantidad" placeholder="0" inputmode="numeric"></div>
           </div>
         </div>
-        <div class="field"><label>Cantidad</label><input type="number" id="cantidad" placeholder="0" inputmode="numeric"></div>
         <div class="grid2">
           <button class="btn btn-add" onclick="agregar()"><span id="btnIcon">＋</span><span id="btnText">AGREGAR</span></button>
           <button class="btn btn-clear" onclick="nuevaCaptura()">✕ LIMPIAR</button>
@@ -485,7 +486,7 @@
   </div>
 </div>
 
-<a class="wa-btn" href="https://chat.whatsapp.com/FSWf1OzG4jiKzBneBP0hsx" target="_blank" rel="noopener" title="Unirse al grupo de WhatsApp">💬</a>
+<a class="wa-btn" id="waBtn" href="https://chat.whatsapp.com/FSWf1OzG4jiKzBneBP0hsx" target="_blank" rel="noopener" title="Unirse al grupo de WhatsApp">💬</a>
 
 <div class="toast" id="toast"></div>
 
@@ -562,6 +563,9 @@ async function showApp() {
   await loadLists();
   if (currentRole === 'admin') await loadAllUsers();
   console.log('[TMT1] showApp — uid:', currentUser.uid, 'role:', currentRole, 'name:', currentName);
+  // Show WhatsApp button
+  const waBtn = document.getElementById('waBtn');
+  if (waBtn) waBtn.style.display = 'flex';
   listenHistorial();
   updateStats([]);
 }
