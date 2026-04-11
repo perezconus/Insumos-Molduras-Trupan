@@ -98,6 +98,7 @@
     .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
     .btn-admin{background:linear-gradient(135deg,#7b00d4,var(--admin));color:#fff;box-shadow:0 4px 16px rgba(197,96,255,0.2)}
     .btn-sm{padding:7px 12px;font-size:12px;border-radius:8px;width:auto}
+    .btn-danger-soft{background:rgba(255,61,113,0.12);border:1px solid rgba(255,61,113,0.3);color:var(--danger)}
     .btn-action-edit{background:rgba(255,179,0,0.15);border:1px solid rgba(255,179,0,0.3);color:var(--warn);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:14px;font-family:var(--font);font-weight:600;transition:background .15s}
     .btn-action-edit:active{background:rgba(255,179,0,0.3)}
     .btn-action-del{background:rgba(255,61,113,0.15);border:1px solid rgba(255,61,113,0.3);color:var(--danger);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:14px;font-family:var(--font);font-weight:600;transition:background .15s}
@@ -132,6 +133,9 @@
     .ubicacion-badge.fase1{background:rgba(0,128,255,0.15);border:1px solid rgba(0,128,255,0.35);color:var(--accent2)}
     .ubicacion-badge.fase3{background:rgba(163,0,255,0.15);border:1px solid rgba(163,0,255,0.35);color:#c560ff}
     .user-badge{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:6px;background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);color:var(--success)}
+    .anulado-badge{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(255,61,113,0.12);border:1px solid rgba(255,61,113,0.3);color:var(--danger);letter-spacing:1px}
+    .record-row.anulado{opacity:0.6;border-color:rgba(255,61,113,0.25)}
+    .motivo-text{font-size:11px;color:var(--danger);font-family:var(--mono);margin-top:4px}
 
     /* ADMIN LISTS */
     .list-manager{margin-bottom:14px}
@@ -348,6 +352,19 @@
             <button class="tag-add-btn" onclick="addListItem('tipos','newTipo')">＋ Agregar</button>
           </div>
         </div>
+
+        <div class="divider"></div>
+
+        <div class="list-manager">
+          <div class="list-manager-header">
+            <span class="list-manager-title">Motivos de anulación</span>
+          </div>
+          <div class="tag-grid" id="tagMotivos"></div>
+          <div class="tag-add-row">
+            <input type="text" id="newMotivo" placeholder="Nuevo motivo...">
+            <button class="tag-add-btn" onclick="addListItem('motivos','newMotivo')">＋ Agregar</button>
+          </div>
+        </div>
       </div>
 
       <!-- Gestión de usuarios -->
@@ -439,6 +456,30 @@
   </div>
 </div>
 
+
+<!-- MODAL ANULAR REGISTRO -->
+<div class="modal-overlay" id="modalAnular">
+  <div class="modal">
+    <div class="modal-title">🚫 Anular Registro<button class="modal-close" onclick="closeModal('modalAnular')">✕</button></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">El registro quedará marcado como <strong style="color:var(--danger)">ANULADO</strong> y visible en el historial. Solo el administrador puede eliminarlo definitivamente.</p>
+    <div class="field">
+      <label>Motivo de anulación</label>
+      <select id="motivoAnular">
+        <option value="">Selecciona un motivo...</option>
+        <option>Error de conteo</option>
+        <option>Registro duplicado</option>
+        <option>Formato incorrecto</option>
+        <option>Error de tipo</option>
+        <option>Material defectuoso</option>
+      </select>
+    </div>
+    <div class="grid2" style="margin-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal('modalAnular')">CANCELAR</button>
+      <button class="btn btn-danger-soft" onclick="confirmarAnulacion()">ANULAR</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -463,8 +504,9 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 
 // ── Defaults ──
-const DEFAULT_INSUMOS = ['Tapas','Parrillas','Cierres','Espaciadores','Esquineros'];
-const DEFAULT_TIPOS   = ['Menard','Superior','Lateral','Normal','Duplex','Tripack'];
+const DEFAULT_INSUMOS  = ['Tapas','Parrillas','Cierres','Espaciadores','Esquineros'];
+const DEFAULT_TIPOS    = ['Menard','Superior','Lateral','Normal','Duplex','Tripack'];
+const DEFAULT_MOTIVOS  = ['Error de conteo','Registro duplicado','Formato incorrecto','Error de tipo','Material defectuoso'];
 
 // ── State ──
 let currentUser  = null;
@@ -475,6 +517,7 @@ let editDocId    = null;
 let adminFilter  = 'all';
 let listInsumos  = [...DEFAULT_INSUMOS];
 let listTipos    = [...DEFAULT_TIPOS];
+let listMotivos  = [...DEFAULT_MOTIVOS];
 let unsubHistorial = null;
 let unsubAdmin     = null;
 let correlativo    = 1;
@@ -574,17 +617,17 @@ async function loadLists() {
   const snap = await getDoc(doc(db,'config','listas'));
   if (snap.exists()) {
     const d = snap.data();
-    if (d.insumos?.length) listInsumos = d.insumos;
-    if (d.tipos?.length)   listTipos   = d.tipos;
+    if (d.insumos?.length)  listInsumos  = d.insumos;
+    if (d.tipos?.length)    listTipos    = d.tipos;
+    if (d.motivos?.length)  listMotivos  = d.motivos;
   } else {
-    // Primera vez: guardar defaults
-    await setDoc(doc(db,'config','listas'), { insumos: DEFAULT_INSUMOS, tipos: DEFAULT_TIPOS });
+    await setDoc(doc(db,'config','listas'), { insumos: DEFAULT_INSUMOS, tipos: DEFAULT_TIPOS, motivos: DEFAULT_MOTIVOS });
   }
   populateSelects();
 }
 
 async function saveLists() {
-  await setDoc(doc(db,'config','listas'), { insumos: listInsumos, tipos: listTipos });
+  await setDoc(doc(db,'config','listas'), { insumos: listInsumos, tipos: listTipos, motivos: listMotivos });
   populateSelects();
 }
 
@@ -598,9 +641,19 @@ function populateSelects() {
   if (listTipos.includes(prev2))   tipoSel.value   = prev2;
 }
 
+function populateMotivosSelect() {
+  const sel = document.getElementById('motivoAnular');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Selecciona un motivo...</option>' +
+    listMotivos.map(v => `<option>${v}</option>`).join('');
+  if (listMotivos.includes(prev)) sel.value = prev;
+}
+
 function renderTagLists() {
-  renderTags('tagInsumos', listInsumos, 'insumos');
-  renderTags('tagTipos',   listTipos,   'tipos');
+  renderTags('tagInsumos',  listInsumos,  'insumos');
+  renderTags('tagTipos',    listTipos,    'tipos');
+  renderTags('tagMotivos',  listMotivos,  'motivos');
+  populateMotivosSelect();
 }
 
 function renderTags(containerId, list, listName) {
@@ -622,9 +675,12 @@ window.addListItem = async (listName, inputId) => {
   if (listName === 'insumos') {
     if (listInsumos.includes(val)) { showToast('Ya existe', 'error'); return; }
     listInsumos.push(val);
-  } else {
+  } else if (listName === 'tipos') {
     if (listTipos.includes(val)) { showToast('Ya existe', 'error'); return; }
     listTipos.push(val);
+  } else {
+    if (listMotivos.includes(val)) { showToast('Ya existe', 'error'); return; }
+    listMotivos.push(val);
   }
   input.value = '';
   await saveLists();
@@ -634,7 +690,8 @@ window.addListItem = async (listName, inputId) => {
 
 async function removeListItem(listName, index) {
   if (listName === 'insumos') listInsumos.splice(index, 1);
-  else listTipos.splice(index, 1);
+  else if (listName === 'tipos') listTipos.splice(index, 1);
+  else listMotivos.splice(index, 1);
   await saveLists();
   renderTagLists();
   showToast('Eliminado', 'error');
@@ -685,9 +742,36 @@ window.editar = (docId, d) => {
   setTimeout(() => document.getElementById('formCard').scrollIntoView({behavior:'smooth',block:'start'}), 100);
 };
 
-window.eliminar = async (docId, uid) => {
+// ── ANULAR (operarios) ──
+let pendingAnularId = null;
+window.solicitarAnulacion = (docId, uid) => {
   if (uid !== currentUser.uid && currentRole !== 'admin') { showToast('Sin permiso','error'); return; }
-  if (!confirm('¿Eliminar este registro?')) return;
+  pendingAnularId = docId;
+  document.getElementById('motivoAnular').selectedIndex = 0;
+  document.getElementById('modalAnular').classList.add('show');
+};
+
+window.confirmarAnulacion = async () => {
+  const motivo = document.getElementById('motivoAnular').value;
+  if (!motivo) { showToast('Selecciona un motivo','error'); return; }
+  try {
+    await updateDoc(doc(db,'registros',pendingAnularId), {
+      estado: 'anulado',
+      motivoAnulacion: motivo,
+      anuladoPor: currentName,
+      anuladoUid: currentUser.uid,
+      fechaAnulacion: serverTimestamp()
+    });
+    closeModal('modalAnular');
+    pendingAnularId = null;
+    showToast('Registro anulado','error');
+  } catch(e) { showToast('Error al anular','error'); }
+};
+
+// ── ELIMINAR DEFINITIVO (solo admin) ──
+window.eliminar = async (docId, uid) => {
+  if (currentRole !== 'admin') { showToast('Sin permiso','error'); return; }
+  if (!confirm('¿Eliminar DEFINITIVAMENTE este registro? Esta acción no se puede deshacer.')) return;
   await deleteDoc(doc(db,'registros',docId));
   showToast('Registro eliminado','error');
 };
@@ -743,18 +827,22 @@ function renderLista(containerId, docs, isAdmin) {
     groupEl.className = 'date-group';
     groupEl.innerHTML = `<div class="date-heading"><span>📅 ${fecha}</span><span class="date-heading-count">${grupo.length} reg.</span></div>`;
     grupo.forEach(d => {
-      const canEdit = d.uid === currentUser.uid || currentRole === 'admin';
+      const isAnulado = d.estado === 'anulado';
+      const canEdit   = (d.uid === currentUser.uid || currentRole === 'admin') && !isAnulado;
+      const canAnular = (d.uid === currentUser.uid || currentRole === 'admin') && !isAnulado;
+      const canDelete = currentRole === 'admin';
       const row = document.createElement('div');
-      row.className = 'record-row';
+      row.className = 'record-row' + (isAnulado ? ' anulado' : '');
       row.innerHTML = `
         <div class="record-top">
           <span class="record-lote">#${d.lote}</span>
-          <div style="display:flex;align-items:center;gap:5px">
-            <span class="ubicacion-badge ${d.ubicacion==='FASE 3'?'fase3':'fase1'}">${d.ubicacion||'FASE 1'}</span>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end">
+            ${isAnulado ? '<span class="anulado-badge">ANULADO</span>' : `<span class="ubicacion-badge ${d.ubicacion==='FASE 3'?'fase3':'fase1'}">${d.ubicacion||'FASE 1'}</span>`}
             ${isAdmin?`<span class="user-badge">${d.userName||'?'}</span>`:''}
             <div class="record-actions">
-              ${canEdit?`<button class="btn-action-edit" data-action="edit" data-id="${d.id}" type="button">✏️</button>`:''}
-              ${canEdit?`<button class="btn-action-del" data-action="del"  data-id="${d.id}" data-uid="${d.uid}" type="button">🗑️</button>`:''}
+              ${canEdit  ?`<button class="btn-action-edit" data-action="edit"   data-id="${d.id}" type="button">✏️</button>`:''}
+              ${canAnular?`<button class="btn-action-del"  data-action="anular" data-id="${d.id}" data-uid="${d.uid}" type="button">🚫</button>`:''}
+              ${canDelete && isAnulado?`<button class="btn-action-del" data-action="del" data-id="${d.id}" data-uid="${d.uid}" type="button" title="Eliminar definitivo">🗑️</button>`:''}
             </div>
           </div>
         </div>
@@ -762,8 +850,9 @@ function renderLista(containerId, docs, isAdmin) {
           <div class="record-field"><span class="rf-label">Insumo</span><span class="rf-value">${d.insumo}</span></div>
           <div class="record-field"><span class="rf-label">Tipo</span><span class="rf-value">${d.tipo}</span></div>
           <div class="record-field"><span class="rf-label">Formato</span><span class="dim-pill">${d.largo||'?'} × ${d.ancho||'?'} cm</span></div>
-          <div class="record-field"><span class="rf-label">Cantidad</span><span class="qty-pill">${d.cantidad}</span></div>
+          <div class="record-field"><span class="rf-label">Cantidad</span><span class="qty-pill">${isAnulado?'<s>'+d.cantidad+'</s>':d.cantidad}</span></div>
         </div>
+        ${isAnulado?`<div class="motivo-text">🚫 ${d.motivoAnulacion||'Anulado'} · por ${d.anuladoPor||'?'}</div>`:''}
         <div class="record-foot">
           <span class="foot-item">🕐 ${d._hora}</span>
           ${isAdmin?`<span class="foot-item">👤 ${d.userName||'?'}</span>`:''}
@@ -771,8 +860,9 @@ function renderLista(containerId, docs, isAdmin) {
       row.addEventListener('click', e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
-        if (btn.dataset.action === 'edit') editar(d.id, d);
-        if (btn.dataset.action === 'del')  eliminar(d.id, d.uid);
+        if (btn.dataset.action === 'edit')   editar(d.id, d);
+        if (btn.dataset.action === 'anular') solicitarAnulacion(d.id, d.uid);
+        if (btn.dataset.action === 'del')    eliminar(d.id, d.uid);
       });
       groupEl.appendChild(row);
     });
@@ -802,10 +892,12 @@ window.nuevaCaptura = () => {
 
 // ── CSV ──
 function docsToCSV(docs) {
-  let csv = 'Lote,Usuario,Ubicacion,Insumo,Tipo,Largo,Ancho,Cantidad,Fecha,Hora\n';
+  let csv = 'Lote,Usuario,Ubicacion,Insumo,Tipo,Largo,Ancho,Cantidad,Estado,MotivoAnulacion,Fecha,Hora\n';
   docs.forEach(d => {
     const ts = d.ts?.toDate ? d.ts.toDate() : new Date();
-    csv += `${d.lote},${d.userName||''},${d.ubicacion||''},${d.insumo},${d.tipo},${d.largo||''},${d.ancho||''},${d.cantidad},${ts.toLocaleDateString('es')},${ts.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}\n`;
+    const estado = d.estado || 'activo';
+    const motivo = d.motivoAnulacion || '';
+    csv += `${d.lote},${d.userName||''},${d.ubicacion||''},${d.insumo},${d.tipo},${d.largo||''},${d.ancho||''},${d.cantidad},${estado},${motivo},${ts.toLocaleDateString('es')},${ts.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}\n`;
   });
   return csv;
 }
